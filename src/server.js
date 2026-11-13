@@ -1,119 +1,145 @@
-import http from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { timingSafeEqual } from 'node:crypto';
-
-const pages = new Set(['/', '/welcome', '/profile', '/preferences', '/review', '/complete', '/report']);
-const routes = new Set(['welcome', 'profile', 'preferences', 'review', 'complete']);
-const names = new Set(['LCP', 'INP', 'CLS', 'APP_ROUTE_RENDER']);
-const idPattern = /^[a-f0-9-]{36}$/;
-const shortLabel = /^[A-Za-z0-9 ._-]{1,40}$/;
-const reply = (res, status, data) => { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }); res.end(JSON.stringify(data)); };
-function auth(value, token) {
-  const a = Buffer.from(value || ''), b = Buffer.from(`Bearer ${token}`);
-  return a.length === b.length && timingSafeEqual(a, b);
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Journey Lab · SPA RUM demo</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;color:#16233d;background:#f4f7fb}*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer}header{background:#102747;color:white;padding:17px max(24px,calc((100vw - 1120px)/2));display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{font-size:19px;font-weight:800;letter-spacing:-.03em}.brand small{display:block;font-size:10px;letter-spacing:.17em;text-transform:uppercase;color:#8bc7f0}header button{background:transparent;border:1px solid #68809e;color:#fff;border-radius:9px;padding:9px 14px}main{max-width:1120px;margin:45px auto;padding:0 24px}.eyebrow{color:#2772ad;text-transform:uppercase;letter-spacing:.13em;font-weight:800;font-size:12px}.hero h1{font-size:clamp(32px,5vw,52px);letter-spacing:-.05em;line-height:1.06;margin:12px 0}.hero p{color:#52647a;line-height:1.6;max-width:670px}.layout{display:grid;grid-template-columns:245px minmax(0,1fr);gap:24px;margin-top:32px}.panel{background:#fff;border:1px solid #dce5ef;border-radius:18px;box-shadow:0 12px 32px #172b4d0a}.rail{padding:20px;align-self:start}.rail h3{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#78889b}.step{display:flex;gap:11px;align-items:center;padding:12px 8px;color:#79889b}.step .dot{height:27px;width:27px;border-radius:50%;background:#eaf0f5;display:grid;place-items:center;font-size:12px;font-weight:800}.step.active{color:#14689e;font-weight:750}.step.active .dot{background:#d9eefc}.step.done{color:#263b52}.step.done .dot{background:#d4f3e6;color:#148158}.card{padding:clamp(24px,4vw,48px);min-height:440px}.progress{height:7px;background:#edf2f7;border-radius:8px;overflow:hidden}.progress span{display:block;height:100%;background:#18a7aa;transition:width .25s}.card h2{font-size:30px;letter-spacing:-.04em;margin:30px 0 10px}.card p{color:#617087;line-height:1.55}.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:28px 0}.choice{border:1.5px solid #d8e2ed;background:white;padding:18px;text-align:left;border-radius:12px;min-height:84px;color:#263a51}.choice:hover,.choice.selected{border-color:#168fa8;background:#e9f9f9}.choice strong{display:block}.choice span{display:block;color:#66788b;font-size:13px;margin-top:5px}.actions{display:flex;gap:12px;justify-content:space-between;margin-top:32px}.primary,.secondary{border-radius:10px;padding:13px 19px;font-weight:750}.primary{background:#12638d;color:#fff;border:1px solid #12638d}.primary:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#fff;color:#355571;border:1px solid #d1dfeb}.note{font-size:12px;color:#75869b;margin-top:20px}.summary{border-radius:12px;background:#eff7fa;padding:20px;line-height:2;margin:26px 0}.report{padding:28px}.report h2{font-size:28px;margin:4px 0}.report .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:24px 0}.report input,.report select{padding:11px 12px;border:1px solid #cbd9e5;border-radius:9px;min-width:135px}.report input{min-width:250px}.hint{color:#65778c;font-size:13px}.metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:20px 0}.metric{border:1px solid #dce6ee;border-radius:13px;padding:20px;background:#f9fbfd}.metric .value{font-size:30px;font-weight:800;letter-spacing:-.04em;margin:10px 0}.metric strong{font-size:13px}.good{color:#11795d}.needs{color:#9a6b08}.poor{color:#b1414d}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;border-bottom:1px solid #e1e8ef;padding:11px 8px}th{color:#687b91}code{font-size:12px}.scroll{overflow:auto}.error{color:#b1414d}.badge{font-size:11px;border-radius:20px;background:#e9f3fb;color:#27658d;padding:5px 8px}footer{max-width:1120px;margin:32px auto 60px;padding:0 24px;color:#7c8ca0;font-size:12px}@media(max-width:760px){.layout{display:block}.rail{margin-bottom:16px}.rail .steps{display:flex;overflow:auto}.step{font-size:12px;white-space:nowrap}.metric-grid{grid-template-columns:1fr}.choices{grid-template-columns:1fr}main{margin-top:28px}}
+</style></head><body><header><div class="brand"><small>Experience prototype</small>Journey Lab</div><button id="mode">View RUM report</button></header><main id="app"></main><footer>Demo journey only · No names, contact details, or form answers are sent to the RUM collector.</footer>
+<script type="module">
+const steps=['welcome','profile','preferences','review','complete'];
+const labels=['Welcome','Profile','Preferences','Review','Complete'];
+const state={grade:null,format:null,days:30,report:null,browser:'all',device:'all'};
+function storedId(storage,key){try{let id=storage.getItem(key);if(!id){id=crypto.randomUUID();storage.setItem(key,id)}return id}catch{return crypto.randomUUID()}}
+const testerId=storedId(localStorage,'rum_tester_id');
+const session=storedId(sessionStorage,'rum_session_id');
+const visitId=crypto.randomUUID();
+document.querySelector('footer').textContent+=` · Tester ID: ${testerId.slice(0,8)} · Session ID: ${session.slice(0,8)}`;
+const collectorStatus=document.createElement('span');collectorStatus.textContent=' · Collector: checking';document.querySelector('footer').append(collectorStatus);
+const app=document.querySelector('#app');
+const mode=document.querySelector('#mode');
+const hosted=location.protocol==='http:'||location.protocol==='https:';
+const routeFromURL=()=>{const match=(hosted?location.pathname:location.hash).match(/(?:\/|#)(welcome|profile|preferences|review|complete|report)$/);return match?match[1]:'welcome'};
+let route=routeFromURL();
+const routeOfMetric=m=>{try{const path=new URL(m.navigationURL||location.href).pathname;if(path==='/report')return null;return path.match(/\/(welcome|profile|preferences|review|complete)$/)?.[1]||'welcome'}catch{return 'welcome'}};
+const ua=navigator.userAgent;
+const device=/iPad|Tablet/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)?'tablet':/Mobi|Android|iPhone/i.test(ua)?'mobile':'desktop';
+function browserInfo(){const brands=navigator.userAgentData?.brands||[];for(const brand of ['Microsoft Edge','Google Chrome','Chromium']){const b=brands.find(x=>x.brand===brand);if(b)return {browser:brand,version:b.version}}for(const [name,re] of [['Edge',/(?:Edg|EdgiOS)\/(\d+)/],['Chrome',/(?:Chrome|CriOS)\/(\d+)/],['Firefox',/(?:Firefox|FxiOS)\/(\d+)/],['Safari',/Version\/(\d+).*Safari/]]){const m=ua.match(re);if(m)return {browser:name,version:m[1]}}return {browser:'Other',version:'Unknown'}}
+const {browser,version:browserVersion}=browserInfo();
+const softSupported=!!window.PerformanceObserver?.supportedEntryTypes?.includes('soft-navigation');
+const clsSupported=!!window.PerformanceObserver?.supportedEntryTypes?.includes('layout-shift');
+let libraryStatus='pending';
+const views=[];
+let currentView=null;
+let collectorError=false;
+function post(path,event,beacon=false){if(!hosted)return;const body=JSON.stringify(event);if(beacon&&navigator.sendBeacon&&navigator.sendBeacon(path,new Blob([body],{type:'application/json'})))return;fetch(path,{method:'POST',headers:{'content-type':'application/json'},body,keepalive:true}).then(response=>{if(!response.ok){collectorError=true;collectorStatus.textContent=` · Collector error: ${path} returned ${response.status}`}else if(!collectorError)collectorStatus.textContent=' · Collector: connected'}).catch(()=>{collectorError=true;collectorStatus.textContent=` · Collector error: ${path} unreachable`});}
+function endView(){if(currentView){post('/api/views',{...currentView,action:'end',libraryStatus},true);currentView=null}}
+function startView(navigation){if(route==='report')return;const view={viewId:crypto.randomUUID(),route,navigation,visitId,session,testerId,browser,browserVersion,device,softSupported,clsSupported,clientTime:new Date().toISOString()};views.push(view);currentView=view;post('/api/views',{...view,action:'start',libraryStatus})}
+function send(event){post('/api/events',{...event,session,device});}
+function vital(m){const target=routeOfMetric(m);if(!target)return;const navigation=m.navigationType==='soft-navigation'?'soft':'hard';const view=views.findLast(v=>v.route===target&&v.navigation===navigation);if(view)send({metricId:m.id,name:m.name,value:m.value,route:target,navigation,viewId:view.viewId});}
+import('https://unpkg.com/web-vitals@6.2.3/dist/web-vitals.js?module').then(({onLCP,onINP,onCLS})=>{
+  libraryStatus='loaded';post('/api/views',{action:'library',visitId,libraryStatus});
+  for(const view of views)post('/api/views',{...view,action:'start',libraryStatus});
+  for(const fn of [onLCP,onINP,onCLS])fn(vital,{reportSoftNavs:true,reportAllChanges:true});
+}).catch(()=>{libraryStatus='failed';post('/api/views',{action:'library',visitId,libraryStatus});for(const view of views)post('/api/views',{...view,action:'start',libraryStatus})});
+function navigate(next){const start=performance.now();endView();route=next;if(hosted)history.pushState({},'',next==='report'?'/report':'/'+next);else location.hash=next;render();startView(softSupported?'soft':'app');const view=currentView;requestAnimationFrame(()=>requestAnimationFrame(()=>{if(view)send({metricId:'route_'+crypto.randomUUID().replaceAll('-',''),name:'APP_ROUTE_RENDER',value:performance.now()-start,route:next,navigation:'app',viewId:view.viewId});}));}
+window.addEventListener('popstate',()=>{endView();route=routeFromURL();render();startView(softSupported?'soft':'app')});
+window.addEventListener('pagehide',endView);
+window.addEventListener('hashchange',()=>{if(!hosted){route=routeFromURL();render()}});
+mode.onclick=()=>navigate(route==='report'?'welcome':'report');
+function shell(content){const idx=steps.indexOf(route);return `<section class="hero"><div class="eyebrow">Single page journey · RUM instrumented</div><h1>Explore a smoother path<br>from interest to action.</h1><p>Five distinct views, one document load. Move through the journey and inspect real measurements in the report.</p></section><div class="layout"><aside class="panel rail"><h3>Your journey</h3><div class="steps">${steps.map((s,i)=>`<div class="step ${i===idx?'active':i<idx?'done':''}"><span class="dot">${i<idx?'✓':i+1}</span>${labels[i]}</div>`).join('')}</div></aside><section class="panel card"><div class="progress"><span style="width:${((idx+1)/5)*100}%"></span></div>${content}</section></div>`}
+function choice(group,value,title,description){return `<button class="choice ${state[group]===value?'selected':''}" data-choice="${group}" data-value="${value}"><strong>${title}</strong><span>${description}</span></button>`}
+function actions(back,next,disabled=false){return `<div class="actions">${back?`<button class="secondary" data-go="${back}">Back</button>`:'<span></span>'}<button class="primary" data-go="${next}" ${disabled?'disabled':''}>${next==='complete'?'Finish journey':'Continue'}</button></div>`}
+function render(){mode.textContent=route==='report'?'Back to journey':'View RUM report';if(route==='report'){renderReport();if(sessionStorage.getItem('rum_report_token'))loadReport();return}let c='';switch(route){case 'welcome':c=`<div class="eyebrow">Step 1 of 5</div><h2>Start your journey</h2><p>This sample flow mirrors a discovery experience. Each next step updates the URL and content without a full browser reload.</p><div class="summary"><strong>What this demo captures</strong><br>Initial load Core Web Vitals · supported soft navigation vitals · app route render time</div>${actions(null,'profile')}`;break;
+case 'profile':c=`<div class="eyebrow">Step 2 of 5</div><h2>Choose a grade band</h2><p>Select a sample option. The choice remains in this browser session and is not sent with telemetry.</p><div class="choices">${choice('grade','elementary','Elementary','Grades K–5')}${choice('grade','middle','Middle school','Grades 6–8')}${choice('grade','high','High school','Grades 9–12')}${choice('grade','exploring','Just exploring','Still considering options')}</div>${actions('welcome','preferences',!state.grade)}`;break;
+case 'preferences':c=`<div class="eyebrow">Step 3 of 5</div><h2>What matters most?</h2><p>Choose a sample priority to complete the interaction.</p><div class="choices">${choice('format','flexibility','Flexibility','Learn on a schedule that fits')}${choice('format','support','Support','Guidance along the way')}${choice('format','community','Community','Ways to connect with peers')}${choice('format','curriculum','Curriculum','Engaging course options')}</div>${actions('profile','review',!state.format)}`;break;
+case 'review':c=`<div class="eyebrow">Step 4 of 5</div><h2>Review your path</h2><p>Your selections demonstrate state retained across SPA routes.</p><div class="summary"><strong>Grade band:</strong> ${state.grade||'Not selected'}<br><strong>Priority:</strong> ${state.format||'Not selected'}</div>${actions('preferences','complete')}`;break;
+case 'complete':c=`<div class="eyebrow">Step 5 of 5</div><h2>Journey complete</h2><p>You have crossed four route transitions without a document reload. Open the report to review incoming measurements.</p><div class="summary">No submission was made. This is a performance proof of concept.</div><div class="actions"><button class="secondary" data-go="welcome">Start again</button><button class="primary" data-go="report">View RUM report</button></div>`}app.innerHTML=shell(c);}
+app.addEventListener('click',e=>{const c=e.target.closest('[data-choice]');if(c){state[c.dataset.choice]=c.dataset.value;render();return}const g=e.target.closest('[data-go]');if(g)navigate(g.dataset.go)});
+const thresholds={LCP:2500,INP:200,CLS:.1};
+const format=(name,n)=>name==='CLS'?n.toFixed(3):Math.round(n)+' ms';
+const percentile=(nums,p)=>nums.sort((a,b)=>a-b)[Math.ceil(nums.length*p)-1];
+function viewStatus(view,name,byView){
+  if(view.navigation==='app')return 'Unsupported';
+  if(name==='CLS' && view.cls_supported===false)return 'Unsupported';
+  // Older records predate capability collection. Firefox and Safari do not expose LayoutShift.
+  if(name==='CLS' && view.cls_supported==null && ['Firefox','Safari'].includes(view.browser))return 'Unsupported';
+  if(byView.get(view.view_id)?.has(name))return 'Captured';
+  if(view.library_status==='failed')return 'Library failed';
+  const elapsed=Date.now()-Date.parse(view.started_at);
+  return view.ended_at||elapsed>600000?'No value':'Pending';
 }
-function valid(e) {
-  return e && names.has(e.name) && routes.has(e.route) && ['hard','soft','app'].includes(e.navigation) &&
-    ['mobile','tablet','desktop'].includes(e.device) && typeof e.session === 'string' && idPattern.test(e.session) &&
-    typeof e.viewId === 'string' && idPattern.test(e.viewId) &&
-    typeof e.metricId === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(e.metricId) &&
-    typeof e.value === 'number' && Number.isFinite(e.value) && e.value >= 0 && e.value <= 600000 &&
-    (e.name === 'APP_ROUTE_RENDER' ? e.navigation === 'app' : e.navigation !== 'app');
+const viewType={hard:'Document load',soft:'SPA · soft eligible',app:'SPA · app only'};
+// Portal browser export, Aug 15–Nov 13, 2026. These are browser counts, not RUM views.
+// Clearly soft-capable: Chrome/Chrome Mobile/Edge/Chromium v151+ (excluding iOS and webviews).
+// Clearly not: older versions of those families, Safari, Firefox, and iOS browsers.
+// Unclassified: in-app browsers, webviews, bots, and other families without engine/version evidence.
+const portalMix={total:813251,softCandidate:338081,noSoft:408326,unclassified:66844};
+const percent=(part,total)=>total?`${(100*part/total).toFixed(1)}%`:'—';
+function reportModel(){
+  const report=state.report||{views:[],events:[]};
+  const views=(report.views||[]).filter(v=>(state.browser==='all'||v.browser===state.browser)&&(state.device==='all'||v.device===state.device));
+  const viewIds=new Set(views.map(v=>v.view_id));
+  const rows=(report.events||[]).filter(e=>viewIds.has(e.view_id));
+  const legacy=(report.events||[]).filter(e=>!e.view_id);
+  const byView=new Map();
+  for(const e of rows){if(!byView.has(e.view_id))byView.set(e.view_id,new Map());byView.get(e.view_id).set(e.name,e.value)}
+  return {views,rows,legacy,byView};
 }
-function validView(e) {
-  return e && idPattern.test(e.viewId || '') && idPattern.test(e.visitId || '') &&
-    idPattern.test(e.session || '') && idPattern.test(e.testerId || '') &&
-    routes.has(e.route) && ['hard','soft','app'].includes(e.navigation) &&
-    ['mobile','tablet','desktop'].includes(e.device) && shortLabel.test(e.browser || '') &&
-    shortLabel.test(e.browserVersion || '') && typeof e.softSupported === 'boolean' &&
-    (e.clsSupported === undefined || typeof e.clsSupported === 'boolean') &&
-    typeof e.clientTime === 'string' && /^\d{4}-\d\d-\d\dT/.test(e.clientTime) && !Number.isNaN(Date.parse(e.clientTime));
+function exportCsv(views,byView){
+  const cols=['server_time','client_time','tester_id','session_id','visit_id','view_id','browser','browser_version','device','route','navigation','soft_supported','cls_supported','library_status','view_ended','LCP_status','LCP_value','INP_status','INP_value','CLS_status','CLS_value'];
+  const values=views.map(v=>[v.started_at,v.client_time,v.tester_id,v.session_id,v.visit_id,v.view_id,v.browser,v.browser_version,v.device,v.route,v.navigation,v.soft_supported,v.cls_supported,v.library_status,!!v.ended_at,...['LCP','INP','CLS'].flatMap(name=>[viewStatus(v,name,byView),byView.get(v.view_id)?.get(name)??''])]);
+  const csv=[cols,...values].map(row=>row.map(value=>`"${String(value??'').replaceAll('"','""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='rum-capture-by-view.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
-async function body(req) {
-  let text = '';
-  for await (const chunk of req) { text += chunk; if (text.length > 4096) throw Error('Too large'); }
-  return JSON.parse(text);
+async function loadReport(){
+  const token=document.querySelector('#token').value.trim();
+  if(!token){document.querySelector('#status').textContent='Enter the reporting token set at deployment.';return}
+  sessionStorage.setItem('rum_report_token',token);
+  state.days=Number(document.querySelector('#days').value);
+  state.browser=document.querySelector('#browser-filter').value;
+  state.device=document.querySelector('#device-filter').value;
+  const status=document.querySelector('#status');status.textContent='Loading report…';
+  try{const response=await fetch(`/api/report?days=${state.days}`,{headers:{authorization:`Bearer ${token}`}});
+    if(!response.ok)throw Error(response.status===401?'Invalid reporting token.':`Report request failed (${response.status}).`);
+    state.report=await response.json();renderReport();
+  }catch(err){status.textContent=err.message}
 }
-export function createHandler({ db, token, html }) {
-  return async (req, res) => {
-    const host = req.headers.host || 'localhost';
-    const url = new URL(req.url, `http://${host}`);
-    try {
-      if (url.pathname === '/health' && req.method === 'GET') return reply(res, 200, { ok: true });
-      if (url.pathname === '/api/views' && req.method === 'POST') {
-        if (!req.headers.origin || new URL(req.headers.origin).host !== host) return reply(res, 403, { error: 'Origin rejected' });
-        let e;
-        try { e = await body(req); } catch { return reply(res, 400, { error: 'Invalid or oversized JSON' }); }
-        if (e?.action === 'library' && idPattern.test(e.visitId || '') && ['loaded','failed'].includes(e.libraryStatus)) {
-          await db.query('UPDATE rum_views SET library_status=$2 WHERE visit_id=$1', [e.visitId,e.libraryStatus]);
-          return reply(res, 202, { ok: true });
-        }
-        if (!['start','end'].includes(e?.action) || !validView(e) || !['pending','loaded','failed'].includes(e.libraryStatus)) return reply(res, 400, { error: 'Invalid view' });
-        await db.query(`INSERT INTO rum_views
-          (view_id, visit_id, session_id, tester_id, route, navigation, browser, browser_version, device, soft_supported, client_time, library_status, ended_at, cls_supported)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-          ON CONFLICT (view_id) DO UPDATE SET ended_at=COALESCE(rum_views.ended_at, EXCLUDED.ended_at),
-          library_status=CASE WHEN rum_views.library_status='pending' THEN EXCLUDED.library_status ELSE rum_views.library_status END`,
-          [e.viewId,e.visitId,e.session,e.testerId,e.route,e.navigation,e.browser,e.browserVersion,e.device,e.softSupported,e.clientTime,e.libraryStatus,e.action === 'end' ? new Date() : null,e.clsSupported ?? null]);
-        return reply(res, 202, { ok: true });
-      }
-      if (url.pathname === '/api/events' && req.method === 'POST') {
-        if (!req.headers.origin || new URL(req.headers.origin).host !== host) return reply(res, 403, { error: 'Origin rejected' });
-        if (Number(req.headers['content-length'] || 0) > 4096) return reply(res, 413, { error: 'Too large' });
-        let e;
-        try { e = await body(req); } catch { return reply(res, 400, { error: 'Invalid or oversized JSON' }); }
-        if (!valid(e)) return reply(res, 400, { error: 'Invalid event' });
-        await db.query(`INSERT INTO rum_events (session, metric_id, name, value, route, navigation, device, view_id)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-          ON CONFLICT (session, metric_id) DO UPDATE SET value=EXCLUDED.value, view_id=EXCLUDED.view_id, recorded_at=NOW()`,
-          [e.session,e.metricId,e.name,e.value,e.route,e.navigation,e.device,e.viewId]);
-        return reply(res, 202, { ok: true });
-      }
-      if (url.pathname === '/api/report' && req.method === 'GET') {
-        if (!auth(req.headers.authorization, token)) return reply(res, 401, { error: 'Unauthorized' });
-        const days = url.searchParams.get('days') === '7' ? 7 : 30;
-        const { rows } = await db.query(`SELECT name, value, route, navigation, device, view_id, recorded_at
-          FROM rum_events WHERE recorded_at >= NOW() - ($1::int * INTERVAL '1 day')
-          ORDER BY recorded_at DESC LIMIT 5001`, [days]);
-        const views = await db.query(`SELECT view_id, visit_id, session_id, tester_id, route, navigation,
-          browser, browser_version, device, soft_supported, cls_supported, client_time, library_status, started_at, ended_at
-          FROM rum_views WHERE started_at >= NOW() - ($1::int * INTERVAL '1 day')
-          ORDER BY started_at DESC LIMIT 5001`, [days]);
-        return reply(res, 200, { days, schemaVersion: 2, capped: rows.length > 5000 || views.rows.length > 5000,
-          events: rows.slice(0, 5000), views: views.rows.slice(0, 5000) });
-      }
-      if (req.method === 'GET' && pages.has(url.pathname)) {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff' });
-        return res.end(html);
-      }
-      return reply(res, 404, { error: 'Not found' });
-    } catch (error) { console.error('Request failed:', error); return reply(res, 500, { error: 'Server error' }); }
-  };
+function renderReport(){
+  const {views,rows,legacy,byView}=reportModel();
+  const typeCounts=Object.fromEntries(['hard','soft','app'].map(type=>[type,views.filter(v=>v.navigation===type).length]));
+  const browserOptions=[...new Set((state.report?.views||[]).map(v=>v.browser))].sort();
+  const summaries=['LCP','INP','CLS'].map(name=>{
+    const eligible=views.filter(v=>viewStatus(v,name,byView)!=='Unsupported');
+    const complete=eligible.filter(v=>viewStatus(v,name,byView)!=='Pending');
+    const captured=complete.filter(v=>viewStatus(v,name,byView)==='Captured');
+    const ineligible=views.length-eligible.length;
+    const settled=complete.length+ineligible;
+    const p=captured.length?percentile(captured.map(v=>byView.get(v.view_id).get(name)),.75):null;
+    return `<div class="metric"><strong>${name} overall view coverage</strong><div class="value">${percent(captured.length,settled)}</div><span class="hint">${captured.length}/${settled} settled views captured<br>${percent(captured.length,complete.length)} among eligible (${captured.length}/${complete.length})<br>${ineligible} ineligible · ${eligible.length-complete.length} pending<br>p75 of captured: ${p===null?'—':format(name,p)}</span></div>`;
+  }).join('');
+  const spaViews=typeCounts.soft+typeCounts.app;
+  const groups=new Map();
+  for(const v of views){const key=[v.browser,v.device,v.navigation].join('|');if(!groups.has(key))groups.set(key,[]);groups.get(key).push(v)}
+  const aggregate=[...groups].sort((a,b)=>a[0].localeCompare(b[0])).map(([key,group])=>{
+    const [browser,device,nav]=key.split('|');const cell=name=>{const eligible=group.filter(v=>viewStatus(v,name,byView)!=='Unsupported');const complete=eligible.filter(v=>viewStatus(v,name,byView)!=='Pending');const yes=complete.filter(v=>viewStatus(v,name,byView)==='Captured').length;return !eligible.length?'Unsupported':`${yes}/${complete.length}${complete.length?` (${Math.round(yes/complete.length*100)}%)`:''}${group.length-eligible.length?` · ${group.length-eligible.length} unsupported`:''}`};
+    return `<tr><td>${browser}</td><td>${device}</td><td>${viewType[nav]||nav}</td><td>${group.length}</td><td>${cell('LCP')}</td><td>${cell('INP')}</td><td>${cell('CLS')}</td></tr>`;
+  }).join('');
+  const cell=(v,name)=>{const status=viewStatus(v,name,byView);return status==='Captured'?`${format(name,byView.get(v.view_id).get(name))} ✓`:`<span class="${status==='No value'?'poor':'hint'}">${status}</span>`};
+  const detail=views.slice(0,200).map(v=>`<tr><td>${new Date(v.started_at).toLocaleString()}</td><td>${v.browser} ${v.browser_version}</td><td>${v.device}</td><td><code title="${v.tester_id}">${v.tester_id.slice(0,8)}</code></td><td><code title="${v.session_id}">${v.session_id.slice(0,8)}</code></td><td>${v.route} · ${viewType[v.navigation]||v.navigation}</td><td>${v.library_status}</td><td>${cell(v,'LCP')}</td><td>${cell(v,'INP')}</td><td>${cell(v,'CLS')}</td></tr>`).join('');
+  const legacyGroups=new Map();for(const e of legacy){const key=`${e.route}|${e.navigation}|${e.name}`;if(!legacyGroups.has(key))legacyGroups.set(key,[]);legacyGroups.get(key).push(e.value)}
+  const legacyRows=[...legacyGroups].map(([key,values])=>{const [route,nav,name]=key.split('|');return `<tr><td>${route}</td><td>${nav}</td><td>${name}</td><td>${values.length}</td><td>${format(name,percentile(values,.75))}</td></tr>`}).join('');
+  app.innerHTML=`<section class="panel report"><div class="eyebrow">Field performance</div><h2>RUM capture report</h2><p class="hint">Each row represents a view, even when the browser sends no CWV value. Times are shown in your local time zone. Tester IDs persist in one browser; session IDs persist in one tab.</p>
+  <div class="toolbar"><input id="token" type="password" placeholder="Reporting token" aria-label="Reporting token" autocomplete="off"><select id="days" aria-label="Time window"><option value="7" ${state.days===7?'selected':''}>Last 7 days</option><option value="30" ${state.days===30?'selected':''}>Last 30 days</option></select><select id="browser-filter" aria-label="Browser filter"><option value="all">All browsers</option>${browserOptions.map(b=>`<option value="${b}" ${state.browser===b?'selected':''}>${b}</option>`).join('')}</select><select id="device-filter" aria-label="Device filter">${['all','desktop','tablet','mobile'].map(d=>`<option value="${d}" ${state.device===d?'selected':''}>${d==='all'?'All devices':d}</option>`).join('')}</select><button class="primary" id="load">Load / apply filters</button><button class="secondary" id="export" ${views.length?'':'disabled'}>Export capture CSV</button></div>
+  <div id="status" class="hint">${state.report?`${views.length} views · ${rows.length} linked metric records · ${legacy.length} older unlinked metrics${state.report.capped?' · report capped at 5,000 records':''}`:'Enter the reporting token to load remote data.'}</div>
+  <p class="hint"><strong>View types:</strong> Document load (${typeCounts.hard}) = a full page load, eligible for browser-supported CWV. SPA · soft eligible (${typeCounts.soft}) = an in-app route change in a browser with the soft-navigation API; the browser may still decline to recognize this particular transition. SPA · app only (${typeCounts.app}) = an in-app route change without that API; only the separate APP_ROUTE_RENDER timing applies. A route change never creates a new document load.</p>
+  <div class="metric-grid">${summaries}</div>
+  <section class="metric" aria-label="Enrollment portal browser mix reference"><strong>Expected SPA coverage against enrollment portal browser mix</strong><p>In the Aug 15–Nov 13, 2026 browser export (${portalMix.total.toLocaleString()} entries), <strong>${percent(portalMix.softCandidate,portalMix.total)}</strong> (${portalMix.softCandidate.toLocaleString()}) were identifiable Chrome/Edge/Chromium 151+ browsers with potential soft-navigation support. <strong>${percent(portalMix.noSoft,portalMix.total)}</strong> (${portalMix.noSoft.toLocaleString()}) were identifiable browsers or versions without it; <strong>${percent(portalMix.unclassified,portalMix.total)}</strong> (${portalMix.unclassified.toLocaleString()}) could not be reliably classified, including in-app browsers and webviews.</p><p class="hint">This is a browser-mix estimate for <em>SPA route CWV eligibility</em>, not an expected metric delivery rate. Recognition of each route, user interaction, and browser APIs still determine actual capture. Full document loads can report metrics in additional browsers. This reference stays fixed when report filters change.</p><p class="hint">POC sample: ${typeCounts.soft}/${spaViews} SPA route views (${percent(typeCounts.soft,spaViews)}) were soft eligible under the current filters. POC route views and portal browser entries have different denominators, so their percentages should not be treated as a like-for-like comparison.</p></section>
+  <h3>Capture by browser and device</h3><p class="hint">The headline overall coverage includes ineligible views; each card also shows capture among eligible views. A browser can support LCP and INP but not CLS; a missing INP may simply mean there was no qualifying interaction. Soft eligible views with no value may not have met the browser's soft-navigation heuristic.</p><div class="scroll"><table><thead><tr><th>Browser</th><th>Device</th><th>View type</th><th>Views</th><th>LCP</th><th>INP</th><th>CLS</th></tr></thead><tbody>${aggregate||'<tr><td colspan="7">No views yet.</td></tr>'}</tbody></table></div>
+  <h3>Individual views</h3><div class="scroll"><table><thead><tr><th>Server date/time</th><th>Browser</th><th>Device</th><th>Tester ID</th><th>Session ID</th><th>Route · type</th><th>Library</th><th>LCP</th><th>INP</th><th>CLS</th></tr></thead><tbody>${detail||'<tr><td colspan="10">No views yet.</td></tr>'}</tbody></table></div>
+  ${legacy.length?`<h3>Earlier metric records</h3><p class="hint">These records predate view IDs. They are shown separately and are excluded from capture rates because their browser, device, and missing-value denominator are unknown.</p><div class="scroll"><table><thead><tr><th>Route</th><th>Type</th><th>Metric</th><th>Samples</th><th>p75</th></tr></thead><tbody>${legacyRows}</tbody></table></div>`:''}
+  <p class="note">Overall view coverage = views with a value / settled views (completed eligible views plus ineligible views). Eligible-view capture excludes ineligible views. Open eligible views stay pending for 10 minutes; closed or stale views without a value show “No value.” “No value” does not necessarily indicate collection failure. These are proportions of recorded views, not people or the proportion of users with a good experience. APP_ROUTE_RENDER remains a separate custom signal.</p></section>`;
+  document.querySelector('#token').value=sessionStorage.getItem('rum_report_token')||'';
+  document.querySelector('#load').onclick=loadReport;
+  document.querySelector('#export').onclick=()=>exportCsv(views,byView);
 }
-export async function start() {
-  if (!process.env.DATABASE_URL || !process.env.ADMIN_TOKEN) throw Error('DATABASE_URL and ADMIN_TOKEN must be set');
-  const { default: pg } = await import('pg');
-  const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
-  await db.query(`CREATE TABLE IF NOT EXISTS rum_events (
-    session TEXT NOT NULL, metric_id TEXT NOT NULL, name TEXT NOT NULL, value DOUBLE PRECISION NOT NULL,
-    route TEXT NOT NULL, navigation TEXT NOT NULL, device TEXT NOT NULL,
-    recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY (session, metric_id))`);
-  await db.query('CREATE INDEX IF NOT EXISTS idx_rum_recorded_at ON rum_events(recorded_at)');
-  await db.query('ALTER TABLE rum_events ADD COLUMN IF NOT EXISTS view_id TEXT');
-  await db.query(`CREATE TABLE IF NOT EXISTS rum_views (
-    view_id TEXT PRIMARY KEY, visit_id TEXT NOT NULL, session_id TEXT NOT NULL, tester_id TEXT NOT NULL,
-    route TEXT NOT NULL, navigation TEXT NOT NULL, browser TEXT NOT NULL, browser_version TEXT NOT NULL,
-    device TEXT NOT NULL, soft_supported BOOLEAN NOT NULL, cls_supported BOOLEAN, client_time TIMESTAMPTZ NOT NULL,
-    library_status TEXT NOT NULL DEFAULT 'pending',
-    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), ended_at TIMESTAMPTZ)`);
-  await db.query("ALTER TABLE rum_views ADD COLUMN IF NOT EXISTS library_status TEXT NOT NULL DEFAULT 'pending'");
-  await db.query('ALTER TABLE rum_views ADD COLUMN IF NOT EXISTS cls_supported BOOLEAN');
-  await db.query('CREATE INDEX IF NOT EXISTS idx_rum_views_started_at ON rum_views(started_at)');
-  const html = await readFile(fileURLToPath(new URL('../public/index.html', import.meta.url)), 'utf8');
-  const port = Number(process.env.PORT || 10000);
-  const server = http.createServer(createHandler({ db, token: process.env.ADMIN_TOKEN, html }));
-  server.listen(port, '0.0.0.0', () => console.log(`RUM SPA listening on ${port}`));
-  return server;
-}
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) start().catch(error => { console.error(error); process.exitCode = 1; });
+render();
+startView('hard');
+</script></body></html>
