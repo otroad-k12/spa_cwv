@@ -51,10 +51,10 @@ export function createHandler({ db, token, html }) {
         if (!['start','end'].includes(e?.action) || !validView(e) || !['pending','loaded','failed'].includes(e.libraryStatus)) return reply(res, 400, { error: 'Invalid view' });
         await db.query(`INSERT INTO rum_views
           (view_id, visit_id, session_id, tester_id, route, navigation, browser, browser_version, device, soft_supported, client_time, library_status, ended_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,${e.action === 'end' ? 'NOW()' : 'NULL'})
-          ON CONFLICT (view_id) DO UPDATE SET ended_at=CASE WHEN $13='end' THEN NOW() ELSE rum_views.ended_at END,
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          ON CONFLICT (view_id) DO UPDATE SET ended_at=COALESCE(rum_views.ended_at, EXCLUDED.ended_at),
           library_status=CASE WHEN rum_views.library_status='pending' THEN EXCLUDED.library_status ELSE rum_views.library_status END`,
-          [e.viewId,e.visitId,e.session,e.testerId,e.route,e.navigation,e.browser,e.browserVersion,e.device,e.softSupported,e.clientTime,e.libraryStatus,e.action]);
+          [e.viewId,e.visitId,e.session,e.testerId,e.route,e.navigation,e.browser,e.browserVersion,e.device,e.softSupported,e.clientTime,e.libraryStatus,e.action === 'end' ? new Date() : null]);
         return reply(res, 202, { ok: true });
       }
       if (url.pathname === '/api/events' && req.method === 'POST') {
@@ -79,7 +79,7 @@ export function createHandler({ db, token, html }) {
           browser, browser_version, device, soft_supported, client_time, library_status, started_at, ended_at
           FROM rum_views WHERE started_at >= NOW() - ($1::int * INTERVAL '1 day')
           ORDER BY started_at DESC LIMIT 5001`, [days]);
-        return reply(res, 200, { days, capped: rows.length > 5000 || views.rows.length > 5000,
+        return reply(res, 200, { days, schemaVersion: 2, capped: rows.length > 5000 || views.rows.length > 5000,
           events: rows.slice(0, 5000), views: views.rows.slice(0, 5000) });
       }
       if (req.method === 'GET' && pages.has(url.pathname)) {
