@@ -71,3 +71,11 @@ test('capture statuses exclude unsupported CLS and app-only transitions',()=>{
   assert.equal(status({...completed,navigation:'app',cls_supported:true},'LCP',new Map()),'Unsupported');
   assert.equal(status({...completed,browser:'Firefox',cls_supported:null},'LCP',new Map()),'No value');
 });
+test('portal browser-mix reference sums to its declared denominator',()=>{
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  const start=html.indexOf('const portalMix=');
+  const end=html.indexOf('const percent=',start);
+  const mix=runInNewContext(`${html.slice(start,end)};portalMix`);
+  assert.equal(mix.softCandidate+mix.noSoft+mix.unclassified,mix.total);
+  assert.equal(Math.round(1000*mix.softCandidate/mix.total)/10,41.6);
+});
