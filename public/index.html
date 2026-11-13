@@ -12,6 +12,7 @@ const testerId=storedId(localStorage,'rum_tester_id');
 const session=storedId(sessionStorage,'rum_session_id');
 const visitId=crypto.randomUUID();
 document.querySelector('footer').textContent+=` · Tester ID: ${testerId.slice(0,8)} · Session ID: ${session.slice(0,8)}`;
+const collectorStatus=document.createElement('span');collectorStatus.textContent=' · Collector: checking';document.querySelector('footer').append(collectorStatus);
 const app=document.querySelector('#app');
 const mode=document.querySelector('#mode');
 const hosted=location.protocol==='http:'||location.protocol==='https:';
@@ -21,13 +22,14 @@ const routeOfMetric=m=>{try{const path=new URL(m.navigationURL||location.href).p
 const ua=navigator.userAgent;
 const device=/iPad|Tablet/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)?'tablet':/Mobi|Android|iPhone/i.test(ua)?'mobile':'desktop';
 function browserInfo(){const brands=navigator.userAgentData?.brands||[];for(const brand of ['Microsoft Edge','Google Chrome','Chromium']){const b=brands.find(x=>x.brand===brand);if(b)return {browser:brand,version:b.version}}for(const [name,re] of [['Edge',/(?:Edg|EdgiOS)\/(\d+)/],['Chrome',/(?:Chrome|CriOS)\/(\d+)/],['Firefox',/(?:Firefox|FxiOS)\/(\d+)/],['Safari',/Version\/(\d+).*Safari/]]){const m=ua.match(re);if(m)return {browser:name,version:m[1]}}return {browser:'Other',version:'Unknown'}}
-const {browser,browserVersion}=browserInfo();
+const {browser,version:browserVersion}=browserInfo();
 const softSupported=!!window.PerformanceObserver?.supportedEntryTypes?.includes('soft-navigation');
 let libraryStatus='pending';
 const views=[];
 let currentView=null;
-function post(path,event){if(!hosted)return;const body=JSON.stringify(event);if(navigator.sendBeacon&&navigator.sendBeacon(path,new Blob([body],{type:'application/json'})))return;fetch(path,{method:'POST',headers:{'content-type':'application/json'},body,keepalive:true}).catch(()=>{});}
-function endView(){if(currentView){post('/api/views',{...currentView,action:'end',libraryStatus});currentView=null}}
+let collectorError=false;
+function post(path,event,beacon=false){if(!hosted)return;const body=JSON.stringify(event);if(beacon&&navigator.sendBeacon&&navigator.sendBeacon(path,new Blob([body],{type:'application/json'})))return;fetch(path,{method:'POST',headers:{'content-type':'application/json'},body,keepalive:true}).then(response=>{if(!response.ok){collectorError=true;collectorStatus.textContent=` · Collector error: ${path} returned ${response.status}`}else if(!collectorError)collectorStatus.textContent=' · Collector: connected'}).catch(()=>{collectorError=true;collectorStatus.textContent=` · Collector error: ${path} unreachable`});}
+function endView(){if(currentView){post('/api/views',{...currentView,action:'end',libraryStatus},true);currentView=null}}
 function startView(navigation){if(route==='report')return;const view={viewId:crypto.randomUUID(),route,navigation,visitId,session,testerId,browser,browserVersion,device,softSupported,clientTime:new Date().toISOString()};views.push(view);currentView=view;post('/api/views',{...view,action:'start',libraryStatus})}
 function send(event){post('/api/events',{...event,session,device});}
 function vital(m){const target=routeOfMetric(m);if(!target)return;const navigation=m.navigationType==='soft-navigation'?'soft':'hard';const view=views.findLast(v=>v.route===target&&v.navigation===navigation);if(view)send({metricId:m.id,name:m.name,value:m.value,route:target,navigation,viewId:view.viewId});}
@@ -62,12 +64,13 @@ function viewStatus(view,name,byView){
 }
 function reportModel(){
   const report=state.report||{views:[],events:[]};
-  const views=report.views.filter(v=>(state.browser==='all'||v.browser===state.browser)&&(state.device==='all'||v.device===state.device));
+  const views=(report.views||[]).filter(v=>(state.browser==='all'||v.browser===state.browser)&&(state.device==='all'||v.device===state.device));
   const viewIds=new Set(views.map(v=>v.view_id));
-  const rows=report.events.filter(e=>viewIds.has(e.view_id));
+  const rows=(report.events||[]).filter(e=>viewIds.has(e.view_id));
+  const legacy=(report.events||[]).filter(e=>!e.view_id);
   const byView=new Map();
   for(const e of rows){if(!byView.has(e.view_id))byView.set(e.view_id,new Map());byView.get(e.view_id).set(e.name,e.value)}
-  return {views,rows,byView};
+  return {views,rows,legacy,byView};
 }
 function exportCsv(views,byView){
   const cols=['server_time','client_time','tester_id','session_id','visit_id','view_id','browser','browser_version','device','route','navigation','soft_supported','library_status','view_ended','LCP_status','LCP_value','INP_status','INP_value','CLS_status','CLS_value'];
@@ -89,7 +92,7 @@ async function loadReport(){
   }catch(err){status.textContent=err.message}
 }
 function renderReport(){
-  const {views,rows,byView}=reportModel();
+  const {views,rows,legacy,byView}=reportModel();
   const browserOptions=[...new Set((state.report?.views||[]).map(v=>v.browser))].sort();
   const summaries=['LCP','INP','CLS'].map(name=>{
     const eligible=views.filter(v=>v.navigation!=='app');
@@ -107,11 +110,14 @@ function renderReport(){
   }).join('');
   const cell=(v,name)=>{const status=viewStatus(v,name,byView);return status==='Captured'?`${format(name,byView.get(v.view_id).get(name))} ✓`:`<span class="${status==='Not recorded'?'poor':'hint'}">${status}</span>`};
   const detail=views.slice(0,200).map(v=>`<tr><td>${new Date(v.started_at).toLocaleString()}</td><td>${v.browser} ${v.browser_version}</td><td>${v.device}</td><td><code title="${v.tester_id}">${v.tester_id.slice(0,8)}</code></td><td><code title="${v.session_id}">${v.session_id.slice(0,8)}</code></td><td>${v.route} · ${v.navigation}</td><td>${v.library_status}</td><td>${cell(v,'LCP')}</td><td>${cell(v,'INP')}</td><td>${cell(v,'CLS')}</td></tr>`).join('');
+  const legacyGroups=new Map();for(const e of legacy){const key=`${e.route}|${e.navigation}|${e.name}`;if(!legacyGroups.has(key))legacyGroups.set(key,[]);legacyGroups.get(key).push(e.value)}
+  const legacyRows=[...legacyGroups].map(([key,values])=>{const [route,nav,name]=key.split('|');return `<tr><td>${route}</td><td>${nav}</td><td>${name}</td><td>${values.length}</td><td>${format(name,percentile(values,.75))}</td></tr>`}).join('');
   app.innerHTML=`<section class="panel report"><div class="eyebrow">Field performance</div><h2>RUM capture report</h2><p class="hint">Each row represents a view, even when the browser sends no CWV value. Times are shown in your local time zone. Tester IDs persist in one browser; session IDs persist in one tab.</p>
   <div class="toolbar"><input id="token" type="password" placeholder="Reporting token" aria-label="Reporting token" autocomplete="off"><select id="days" aria-label="Time window"><option value="7" ${state.days===7?'selected':''}>Last 7 days</option><option value="30" ${state.days===30?'selected':''}>Last 30 days</option></select><select id="browser-filter" aria-label="Browser filter"><option value="all">All browsers</option>${browserOptions.map(b=>`<option value="${b}" ${state.browser===b?'selected':''}>${b}</option>`).join('')}</select><select id="device-filter" aria-label="Device filter">${['all','desktop','tablet','mobile'].map(d=>`<option value="${d}" ${state.device===d?'selected':''}>${d==='all'?'All devices':d}</option>`).join('')}</select><button class="primary" id="load">Load / apply filters</button><button class="secondary" id="export" ${views.length?'':'disabled'}>Export capture CSV</button></div>
-  <div id="status" class="hint">${state.report?`${views.length} views · ${rows.length} metric records${state.report.capped?' · report capped at 5,000 records':''}`:'Enter the reporting token to load remote data.'}</div>
+  <div id="status" class="hint">${state.report?`${views.length} views · ${rows.length} linked metric records · ${legacy.length} older unlinked metrics${state.report.capped?' · report capped at 5,000 records':''}`:'Enter the reporting token to load remote data.'}</div>
   <div class="metric-grid">${summaries}</div><h3>Capture by browser and device</h3><div class="scroll"><table><thead><tr><th>Browser</th><th>Device</th><th>View type</th><th>Views</th><th>LCP</th><th>INP</th><th>CLS</th></tr></thead><tbody>${aggregate||'<tr><td colspan="7">No views yet.</td></tr>'}</tbody></table></div>
   <h3>Individual views</h3><div class="scroll"><table><thead><tr><th>Server date/time</th><th>Browser</th><th>Device</th><th>Tester ID</th><th>Session ID</th><th>Route · type</th><th>Library</th><th>LCP</th><th>INP</th><th>CLS</th></tr></thead><tbody>${detail||'<tr><td colspan="10">No views yet.</td></tr>'}</tbody></table></div>
+  ${legacy.length?`<h3>Earlier metric records</h3><p class="hint">These records predate view IDs. They are shown separately and are excluded from capture rates because their browser, device, and missing-value denominator are unknown.</p><div class="scroll"><table><thead><tr><th>Route</th><th>Type</th><th>Metric</th><th>Samples</th><th>p75</th></tr></thead><tbody>${legacyRows}</tbody></table></div>`:''}
   <p class="note">Capture rate = views with a value / completed eligible views. Open views are pending for 10 minutes; closed or stale views without a value show “Not recorded.” Unsupported SPA route views are excluded. A browser may support soft navigation but an individual route change may not meet its detection heuristic. INP can be absent when there is no qualifying interaction. APP_ROUTE_RENDER remains a separate custom signal.</p></section>`;
   document.querySelector('#token').value=sessionStorage.getItem('rum_report_token')||'';
   document.querySelector('#load').onclick=loadReport;
