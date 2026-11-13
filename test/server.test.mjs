@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { randomUUID } from 'node:crypto';
 import { createHandler } from '../src/server.js';
 
 const origin='https://demo.example';
@@ -12,7 +15,7 @@ const records={views:[],events:[]};
 const db={async query(sql,args){
   if(sql.includes('INSERT INTO rum_views')){records.views.push(args);return {rows:[]}}
   if(sql.includes('INSERT INTO rum_events')){records.events.push(args);return {rows:[]}}
-  if(sql.includes('FROM rum_views'))return {rows:records.views.map(r=>({view_id:r[0],visit_id:r[1],session_id:r[2],tester_id:r[3],route:r[4],navigation:r[5],browser:r[6],browser_version:r[7],device:r[8],soft_supported:r[9],client_time:r[10],library_status:r[11],started_at:new Date().toISOString(),ended_at:r[12]==='end'?new Date().toISOString():null}))};
+  if(sql.includes('FROM rum_views'))return {rows:records.views.map(r=>({view_id:r[0],visit_id:r[1],session_id:r[2],tester_id:r[3],route:r[4],navigation:r[5],browser:r[6],browser_version:r[7],device:r[8],soft_supported:r[9],client_time:r[10],library_status:r[11],started_at:new Date().toISOString(),ended_at:r[12]||null}))};
   if(sql.includes('FROM rum_events'))return {rows:records.events.map(r=>({name:r[2],value:r[3],route:r[4],navigation:r[5],device:r[6],view_id:r[7],recorded_at:new Date().toISOString()}))};
   return {rows:[]};
 }};
@@ -39,4 +42,19 @@ test('view denominator, metric ingest, validation, protected report, deep link',
   assert.equal(report.views[1].route,'profile');
   assert.ok(report.views[1].ended_at);
   result=await call('/preferences');assert.equal(result.status,200);assert.match(result.value,/Demo/);
+});
+test('browser-detection output satisfies the view collector',async()=>{
+  const html=readFileSync(new URL('../public/index.html',import.meta.url),'utf8');
+  const start=html.indexOf('function browserInfo()');
+  const end=html.indexOf('const softSupported=',start);
+  const source=`const ua=navigator.userAgent;${html.slice(start,end)};({browser,browserVersion})`;
+  for(const navigator of [
+    {userAgent:'Chrome/151.0',userAgentData:{brands:[{brand:'Google Chrome',version:'151'}]}},
+    {userAgent:'Mozilla/5.0 Version/19.0 Safari/605.1.15'}
+  ]){
+    const detected=runInNewContext(source,{navigator});
+    assert.ok(detected.browserVersion,`${detected.browser} lacks browserVersion`);
+    const response=await call('/api/views',{method:'POST',originHeader:origin,data:{...view,viewId:randomUUID(),browser:detected.browser,browserVersion:detected.browserVersion}});
+    assert.equal(response.status,202);
+  }
 });
