@@ -67,6 +67,12 @@ function viewStatus(view,name,byView){
   return view.ended_at||elapsed>600000?'No value':'Pending';
 }
 const viewType={hard:'Document load',soft:'SPA · soft eligible',app:'SPA · app only'};
+// Portal browser export, Aug 15–Nov 13, 2026. These are browser counts, not RUM views.
+// Clearly soft-capable: Chrome/Chrome Mobile/Edge/Chromium v151+ (excluding iOS and webviews).
+// Clearly not: older versions of those families, Safari, Firefox, and iOS browsers.
+// Unclassified: in-app browsers, webviews, bots, and other families without engine/version evidence.
+const portalMix={total:813251,softCandidate:338081,noSoft:408326,unclassified:66844};
+const percent=(part,total)=>total?`${(100*part/total).toFixed(1)}%`:'—';
 function reportModel(){
   const report=state.report||{views:[],events:[]};
   const views=(report.views||[]).filter(v=>(state.browser==='all'||v.browser===state.browser)&&(state.device==='all'||v.device===state.device));
@@ -104,9 +110,10 @@ function renderReport(){
     const eligible=views.filter(v=>viewStatus(v,name,byView)!=='Unsupported');
     const complete=eligible.filter(v=>viewStatus(v,name,byView)!=='Pending');
     const captured=complete.filter(v=>viewStatus(v,name,byView)==='Captured');
+    const ineligible=views.length-eligible.length;
+    const settled=complete.length+ineligible;
     const p=captured.length?percentile(captured.map(v=>byView.get(v.view_id).get(name)),.75):null;
-    const pct=complete.length?Math.round(100*captured.length/complete.length):null;
-    return `<div class="metric"><strong>${name} eligible-view capture</strong><div class="value">${pct===null?'—':pct+'%'}</div><span class="hint">${captured.length}/${complete.length} completed eligible views · ${views.length-eligible.length} unsupported · ${eligible.length-complete.length} pending<br>p75 of captured: ${p===null?'—':format(name,p)}</span></div>`;
+    return `<div class="metric"><strong>${name} overall view coverage</strong><div class="value">${percent(captured.length,settled)}</div><span class="hint">${captured.length}/${settled} settled views captured<br>${percent(captured.length,complete.length)} among eligible (${captured.length}/${complete.length})<br>${ineligible} ineligible · ${eligible.length-complete.length} pending<br>p75 of captured: ${p===null?'—':format(name,p)}</span></div>`;
   }).join('');
   const groups=new Map();
   for(const v of views){const key=[v.browser,v.device,v.navigation].join('|');if(!groups.has(key))groups.set(key,[]);groups.get(key).push(v)}
@@ -122,10 +129,12 @@ function renderReport(){
   <div class="toolbar"><input id="token" type="password" placeholder="Reporting token" aria-label="Reporting token" autocomplete="off"><select id="days" aria-label="Time window"><option value="7" ${state.days===7?'selected':''}>Last 7 days</option><option value="30" ${state.days===30?'selected':''}>Last 30 days</option></select><select id="browser-filter" aria-label="Browser filter"><option value="all">All browsers</option>${browserOptions.map(b=>`<option value="${b}" ${state.browser===b?'selected':''}>${b}</option>`).join('')}</select><select id="device-filter" aria-label="Device filter">${['all','desktop','tablet','mobile'].map(d=>`<option value="${d}" ${state.device===d?'selected':''}>${d==='all'?'All devices':d}</option>`).join('')}</select><button class="primary" id="load">Load / apply filters</button><button class="secondary" id="export" ${views.length?'':'disabled'}>Export capture CSV</button></div>
   <div id="status" class="hint">${state.report?`${views.length} views · ${rows.length} linked metric records · ${legacy.length} older unlinked metrics${state.report.capped?' · report capped at 5,000 records':''}`:'Enter the reporting token to load remote data.'}</div>
   <p class="hint"><strong>View types:</strong> Document load (${typeCounts.hard}) = a full page load, eligible for browser-supported CWV. SPA · soft eligible (${typeCounts.soft}) = an in-app route change in a browser with the soft-navigation API; the browser may still decline to recognize this particular transition. SPA · app only (${typeCounts.app}) = an in-app route change without that API; only the separate APP_ROUTE_RENDER timing applies. A route change never creates a new document load.</p>
-  <div class="metric-grid">${summaries}</div><h3>Capture by browser and device</h3><p class="hint">Unsupported views are excluded from each metric's denominator. A browser can support LCP and INP but not CLS; a missing INP may simply mean there was no qualifying interaction. Soft eligible views with no value may not have met the browser's soft-navigation heuristic.</p><div class="scroll"><table><thead><tr><th>Browser</th><th>Device</th><th>View type</th><th>Views</th><th>LCP</th><th>INP</th><th>CLS</th></tr></thead><tbody>${aggregate||'<tr><td colspan="7">No views yet.</td></tr>'}</tbody></table></div>
+  <div class="metric-grid">${summaries}</div>
+  <section class="metric" aria-label="Expected SPA coverage from portal browser mix"><strong>Expected SPA CWV coverage · browser mix</strong><div class="value">${percent(portalMix.softCandidate,portalMix.total)}</div><span class="hint">${portalMix.softCandidate.toLocaleString()} of ${portalMix.total.toLocaleString()} enrollment portal browser entries · Aug 15–Nov 13, 2026<br>Chrome/Edge/Chromium 151+ soft-navigation eligibility estimate; actual metric capture may be lower.</span></section>
+  <h3>Capture by browser and device</h3><p class="hint">The headline overall coverage includes ineligible views; each card also shows capture among eligible views. A browser can support LCP and INP but not CLS; a missing INP may simply mean there was no qualifying interaction. Soft eligible views with no value may not have met the browser's soft-navigation heuristic.</p><div class="scroll"><table><thead><tr><th>Browser</th><th>Device</th><th>View type</th><th>Views</th><th>LCP</th><th>INP</th><th>CLS</th></tr></thead><tbody>${aggregate||'<tr><td colspan="7">No views yet.</td></tr>'}</tbody></table></div>
   <h3>Individual views</h3><div class="scroll"><table><thead><tr><th>Server date/time</th><th>Browser</th><th>Device</th><th>Tester ID</th><th>Session ID</th><th>Route · type</th><th>Library</th><th>LCP</th><th>INP</th><th>CLS</th></tr></thead><tbody>${detail||'<tr><td colspan="10">No views yet.</td></tr>'}</tbody></table></div>
   ${legacy.length?`<h3>Earlier metric records</h3><p class="hint">These records predate view IDs. They are shown separately and are excluded from capture rates because their browser, device, and missing-value denominator are unknown.</p><div class="scroll"><table><thead><tr><th>Route</th><th>Type</th><th>Metric</th><th>Samples</th><th>p75</th></tr></thead><tbody>${legacyRows}</tbody></table></div>`:''}
-  <p class="note">Eligible-view capture = views with a value / completed views eligible for that metric. Open views are pending for 10 minutes; closed or stale views without a value show “No value.” Unsupported views are excluded per metric. “No value” does not necessarily indicate collection failure. The report shows measurement coverage, not the proportion of users with a good experience. APP_ROUTE_RENDER remains a separate custom signal.</p></section>`;
+  <p class="note">Overall view coverage = views with a value / settled views (completed eligible views plus ineligible views). Eligible-view capture excludes ineligible views. Open eligible views stay pending for 10 minutes; closed or stale views without a value show “No value.” “No value” does not necessarily indicate collection failure. These are proportions of recorded views, not people or the proportion of users with a good experience. APP_ROUTE_RENDER remains a separate custom signal.</p></section>`;
   document.querySelector('#token').value=sessionStorage.getItem('rum_report_token')||'';
   document.querySelector('#load').onclick=loadReport;
   document.querySelector('#export').onclick=()=>exportCsv(views,byView);
