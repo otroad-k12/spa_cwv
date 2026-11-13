@@ -27,6 +27,7 @@ function validView(e) {
     routes.has(e.route) && ['hard','soft','app'].includes(e.navigation) &&
     ['mobile','tablet','desktop'].includes(e.device) && shortLabel.test(e.browser || '') &&
     shortLabel.test(e.browserVersion || '') && typeof e.softSupported === 'boolean' &&
+    (e.clsSupported === undefined || typeof e.clsSupported === 'boolean') &&
     typeof e.clientTime === 'string' && /^\d{4}-\d\d-\d\dT/.test(e.clientTime) && !Number.isNaN(Date.parse(e.clientTime));
 }
 async function body(req) {
@@ -50,11 +51,11 @@ export function createHandler({ db, token, html }) {
         }
         if (!['start','end'].includes(e?.action) || !validView(e) || !['pending','loaded','failed'].includes(e.libraryStatus)) return reply(res, 400, { error: 'Invalid view' });
         await db.query(`INSERT INTO rum_views
-          (view_id, visit_id, session_id, tester_id, route, navigation, browser, browser_version, device, soft_supported, client_time, library_status, ended_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          (view_id, visit_id, session_id, tester_id, route, navigation, browser, browser_version, device, soft_supported, client_time, library_status, ended_at, cls_supported)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
           ON CONFLICT (view_id) DO UPDATE SET ended_at=COALESCE(rum_views.ended_at, EXCLUDED.ended_at),
           library_status=CASE WHEN rum_views.library_status='pending' THEN EXCLUDED.library_status ELSE rum_views.library_status END`,
-          [e.viewId,e.visitId,e.session,e.testerId,e.route,e.navigation,e.browser,e.browserVersion,e.device,e.softSupported,e.clientTime,e.libraryStatus,e.action === 'end' ? new Date() : null]);
+          [e.viewId,e.visitId,e.session,e.testerId,e.route,e.navigation,e.browser,e.browserVersion,e.device,e.softSupported,e.clientTime,e.libraryStatus,e.action === 'end' ? new Date() : null,e.clsSupported ?? null]);
         return reply(res, 202, { ok: true });
       }
       if (url.pathname === '/api/events' && req.method === 'POST') {
@@ -76,7 +77,7 @@ export function createHandler({ db, token, html }) {
           FROM rum_events WHERE recorded_at >= NOW() - ($1::int * INTERVAL '1 day')
           ORDER BY recorded_at DESC LIMIT 5001`, [days]);
         const views = await db.query(`SELECT view_id, visit_id, session_id, tester_id, route, navigation,
-          browser, browser_version, device, soft_supported, client_time, library_status, started_at, ended_at
+          browser, browser_version, device, soft_supported, cls_supported, client_time, library_status, started_at, ended_at
           FROM rum_views WHERE started_at >= NOW() - ($1::int * INTERVAL '1 day')
           ORDER BY started_at DESC LIMIT 5001`, [days]);
         return reply(res, 200, { days, schemaVersion: 2, capped: rows.length > 5000 || views.rows.length > 5000,
@@ -103,10 +104,11 @@ export async function start() {
   await db.query(`CREATE TABLE IF NOT EXISTS rum_views (
     view_id TEXT PRIMARY KEY, visit_id TEXT NOT NULL, session_id TEXT NOT NULL, tester_id TEXT NOT NULL,
     route TEXT NOT NULL, navigation TEXT NOT NULL, browser TEXT NOT NULL, browser_version TEXT NOT NULL,
-    device TEXT NOT NULL, soft_supported BOOLEAN NOT NULL, client_time TIMESTAMPTZ NOT NULL,
+    device TEXT NOT NULL, soft_supported BOOLEAN NOT NULL, cls_supported BOOLEAN, client_time TIMESTAMPTZ NOT NULL,
     library_status TEXT NOT NULL DEFAULT 'pending',
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), ended_at TIMESTAMPTZ)`);
   await db.query("ALTER TABLE rum_views ADD COLUMN IF NOT EXISTS library_status TEXT NOT NULL DEFAULT 'pending'");
+  await db.query('ALTER TABLE rum_views ADD COLUMN IF NOT EXISTS cls_supported BOOLEAN');
   await db.query('CREATE INDEX IF NOT EXISTS idx_rum_views_started_at ON rum_views(started_at)');
   const html = await readFile(fileURLToPath(new URL('../public/index.html', import.meta.url)), 'utf8');
   const port = Number(process.env.PORT || 10000);
